@@ -464,6 +464,13 @@ class MQTTConnection {
             return;
         }
 
+        if (json.type === 'udp_timeout') {
+            console.log(`设备 ${this.clientId} 报告 UDP 接收超时，重置会话`);
+            this.bridge.close();
+            this.bridge = null;
+            return;
+        }
+
         this.bridge.sendJson(json);
     }
 
