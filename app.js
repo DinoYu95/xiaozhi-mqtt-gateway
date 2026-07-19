@@ -622,7 +622,7 @@ class MQTTConnection {
         return this.bridge && this.bridge.isAlive();
     }
 
-    /** MQTT 长连接是否在（与 WS bridge 是否建立无关，供 parent_snapshot / 在线状态用） */
+    /** MQTT 长连接是否在（与 WS bridge 是否建立无关，供 notify / 在线状态用） */
     isMqttOnline() {
         return !!(this.protocol && this.protocol.isConnected);
     }
@@ -1048,32 +1048,34 @@ app.post('/api/commands/:clientId', authenticateRequest, async (req, res) => {
                     error: error.message
                 });
             }
-        } else if (command.type === 'parent_snapshot' && command.payload) {
-            // 家长远程看娃：MQTT 直推设备，无需 WS bridge / MCP 同步返图
+        } else if (command.type === 'notify' && command.payload) {
+            // 通用下行：payload 原样 MQTT 推送，业务由 action 区分
             if (!targetConnection.isMqttOnline()) {
                 return res.status(500).json({ success: false, error: '设备 MQTT 未连接' });
             }
             const payload = command.payload;
-            if (!payload.requestId || !payload.uploadUrl || !payload.uploadToken) {
+            if (!payload.action || !payload.requestId) {
                 return res.status(400).json({
                     success: false,
-                    error: 'parent_snapshot 缺少 requestId / uploadUrl / uploadToken'
+                    error: 'notify.payload 缺少 action / requestId'
+                });
+            }
+            const maxPayloadSize = configManager.get('max_mqtt_payload_size') || 8192;
+            const serialized = JSON.stringify(payload);
+            if (serialized.length > maxPayloadSize) {
+                return res.status(400).json({
+                    success: false,
+                    error: `notify.payload 超过 ${maxPayloadSize} 字节`
                 });
             }
             targetConnection.sendMqttMessage(JSON.stringify({
-                type: 'parent_snapshot',
-                payload: {
-                    requestId: payload.requestId,
-                    uploadUrl: payload.uploadUrl,
-                    uploadToken: payload.uploadToken,
-                    maxWidth: payload.maxWidth ?? 640,
-                    jpegQuality: payload.jpegQuality ?? 80
-                }
+                type: 'notify',
+                payload
             }));
-            console.log(`parent_snapshot 已下发 clientId=${clientId} requestId=${payload.requestId}`);
+            console.log(`notify 已下发 clientId=${clientId} action=${payload.action} requestId=${payload.requestId}`);
             res.json({
                 success: true,
-                data: { accepted: true, requestId: payload.requestId }
+                data: { accepted: true, requestId: payload.requestId, action: payload.action }
             });
         } else {
             res.status(500).json({ success: false, error: '指令类型无效' });

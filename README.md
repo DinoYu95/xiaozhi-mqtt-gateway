@@ -30,27 +30,32 @@ curl --location --request POST 'http://localhost:8007/api/commands/lichuang-dev@
 --data-raw '{"type": "mcp", "payload": {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "self.get_device_status", "arguments": {}}}}'
 ```
 
-### 接口1b 家长远程看娃 parent_snapshot（MQTT 直推设备，异步 HTTP 回图）
+### 接口1b 通用下行 notify（异步任务，payload 原样推设备）
 
-与 MCP 共用 `POST /api/commands/{clientId}`，无需 WS bridge。设备需固件支持 `type: parent_snapshot`。
+与 MCP 共用 `POST /api/commands/{clientId}`。gateway **不解析** action，业务在 payload 内。  
+家长看娃示例见 [device-notify-protocol-v1.md](../xiaozhi-esp32-server/docs/device-notify-protocol-v1.md)。
 
 ``` shell
 curl --location --request POST 'http://localhost:8007/api/commands/GID_default@@@11_22_33_44_55_66@@@11_22_33_44_55_66' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Bearer your_daily_token' \
 --data-raw '{
-  "type": "parent_snapshot",
+  "type": "notify",
   "payload": {
+    "v": 1,
+    "action": "camera.capture_and_upload",
+    "taskType": "parent_snapshot",
     "requestId": "snap_demo001",
-    "uploadUrl": "https://your-manager-api/parent-api/chat/snapshot/device-upload",
-    "uploadToken": "one_time_token_from_prepare",
-    "maxWidth": 640,
-    "jpegQuality": 80
+    "params": { "maxWidth": 640, "jpegQuality": 80 },
+    "callback": {
+      "mode": "http_upload",
+      "url": "https://your-manager-api/parent-api/chat/snapshot/device-upload",
+      "token": "one_time_token",
+      "headers": { "X-Snapshot-Token": "one_time_token" }
+    }
   }
 }'
 ```
-
-网关经 MQTT 向 `devices/p2p/{mac}` 下发同结构 JSON；设备拍照后 POST `uploadUrl`。
 
 ### 接口2 设备状态查询API，支持查询设备是否在线
 
