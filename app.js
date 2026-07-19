@@ -622,6 +622,11 @@ class MQTTConnection {
         return this.bridge && this.bridge.isAlive();
     }
 
+    /** MQTT 长连接是否在（与 WS bridge 是否建立无关，供 parent_snapshot / 在线状态用） */
+    isMqttOnline() {
+        return !!(this.protocol && this.protocol.isConnected);
+    }
+
     // Cache device tools to MQTTConnection
     async initializeDeviceTools() {
         this.mcpRequestId = 10000;
@@ -1043,6 +1048,33 @@ app.post('/api/commands/:clientId', authenticateRequest, async (req, res) => {
                     error: error.message
                 });
             }
+        } else if (command.type === 'parent_snapshot' && command.payload) {
+            // 家长远程看娃：MQTT 直推设备，无需 WS bridge / MCP 同步返图
+            if (!targetConnection.isMqttOnline()) {
+                return res.status(500).json({ success: false, error: '设备 MQTT 未连接' });
+            }
+            const payload = command.payload;
+            if (!payload.requestId || !payload.uploadUrl || !payload.uploadToken) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'parent_snapshot 缺少 requestId / uploadUrl / uploadToken'
+                });
+            }
+            targetConnection.sendMqttMessage(JSON.stringify({
+                type: 'parent_snapshot',
+                payload: {
+                    requestId: payload.requestId,
+                    uploadUrl: payload.uploadUrl,
+                    uploadToken: payload.uploadToken,
+                    maxWidth: payload.maxWidth ?? 640,
+                    jpegQuality: payload.jpegQuality ?? 80
+                }
+            }));
+            console.log(`parent_snapshot 已下发 clientId=${clientId} requestId=${payload.requestId}`);
+            res.json({
+                success: true,
+                data: { accepted: true, requestId: payload.requestId }
+            });
         } else {
             res.status(500).json({ success: false, error: '指令类型无效' });
         }
@@ -1067,7 +1099,10 @@ app.post('/api/devices/status', authenticateRequest, (req, res) => {
         clientIds.forEach(clientId => {
             const connection = server.getConnectionById(clientId);
             deviceStatusMap[clientId] = {
-                isAlive: connection ? connection.isAlive() : false,
+                // isAlive：MQTT 长连接在线（空闲无 bridge 时也应为 true）
+                isAlive: connection ? connection.isMqttOnline() : false,
+                // bridgeAlive：是否正在和小智 WS 会话中
+                bridgeAlive: connection ? connection.isAlive() : false,
                 exists: !!connection
             };
         });

@@ -30,6 +30,28 @@ curl --location --request POST 'http://localhost:8007/api/commands/lichuang-dev@
 --data-raw '{"type": "mcp", "payload": {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "self.get_device_status", "arguments": {}}}}'
 ```
 
+### 接口1b 家长远程看娃 parent_snapshot（MQTT 直推设备，异步 HTTP 回图）
+
+与 MCP 共用 `POST /api/commands/{clientId}`，无需 WS bridge。设备需固件支持 `type: parent_snapshot`。
+
+``` shell
+curl --location --request POST 'http://localhost:8007/api/commands/GID_default@@@11_22_33_44_55_66@@@11_22_33_44_55_66' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer your_daily_token' \
+--data-raw '{
+  "type": "parent_snapshot",
+  "payload": {
+    "requestId": "snap_demo001",
+    "uploadUrl": "https://your-manager-api/parent-api/chat/snapshot/device-upload",
+    "uploadToken": "one_time_token_from_prepare",
+    "maxWidth": 640,
+    "jpegQuality": 80
+  }
+}'
+```
+
+网关经 MQTT 向 `devices/p2p/{mac}` 下发同结构 JSON；设备拍照后 POST `uploadUrl`。
+
 ### 接口2 设备状态查询API，支持查询设备是否在线
 
 ``` shell
@@ -37,8 +59,12 @@ curl --location --request POST 'http://localhost:8007/api/devices/status' \
 --header 'Content-Type: application/json' \
 --header 'Authorization: Bearer your_daily_token' \
 --data-raw '{
-    "deviceIds": [
+    "clientIds": [
         "lichuang-dev@@@a0_85_e3_f4_49_34@@@aeebef32-f0ef-4bce-9d8a-894d91bc6932"
     ]
 }'
 ```
+
+返回字段：`isAlive` = MQTT 长连接在线（空闲无对话时也应为 true）；`bridgeAlive` = 是否正在 WS 会话中；`exists` = 网关是否见过该 clientId 连接。
+
+Provide Chinese summary for user.
